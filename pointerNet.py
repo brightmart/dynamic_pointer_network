@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
-# Pointer: 1.word embedding 2.encoder 3.decoder(optional with attention). for more detail, please check:Neural Machine Translation By Jointly Learning to Align And Translate
+# Pointer Network: 1.word embedding 2.encoder 3.decoder(optional with attention). for more detail, please check: Pointer Network https://arxiv.org/pdf/1506.03134.pdf
 import tensorflow as tf
 import numpy as np
 import tensorflow.contrib as tf_contrib
 import random
 import copy
 import os
-from a1_seq2seq import rnn_decoder_with_attention_ptr_network,extract_argmax_and_embed
 
-class seq2seq_attention_model:
+class pointerNet:
     def __init__(self, learning_rate, batch_size, decay_steps, decay_rate, sequence_length,
                  vocab_size, embed_size,hidden_size, is_training,decoder_sent_length=6,
                  initializer=tf.random_normal_initializer(stddev=0.1),clip_gradients=5.0,l2_lambda=0.0001):
@@ -51,7 +50,6 @@ class seq2seq_attention_model:
     def inference(self):
         """main computation graph here:
         #1.Word embedding. 2.Encoder with GRU 3.Decoder using GRU(optional with attention)."""
-        ###################################################################################################################################
         # 1.embedding of words
         self.embedded_words = tf.nn.embedding_lookup(self.Embedding,self.input_x)  #[None, self.sequence_length, self.embed_size]
         # 2.encoder with GRU
@@ -69,19 +67,12 @@ class seq2seq_attention_model:
         cell=self.gru_cell_decoder #this is a special cell. because it beside previous hidden state, current input, it also has a context vecotor, which represent attention result.
 
         output_projection=(self.W_projection,self.b_projection) #W_projection:[self.hidden_size * 2, self.num_classes]; b_projection:[self.num_classes]
-        loop_function = extract_argmax_and_embed(self.Embedding_label,output_projection) if not self.is_training else None #loop function will be used only at testing, not training.
         attention_states=thought_vector #[None, self.sequence_length, self.embed_size]
         decoder_input_embedded=tf.nn.embedding_lookup(self.Embedding_label,self.decoder_input) #[batch_size,self.decoder_sent_length,embed_size]
         decoder_input_splitted = tf.split(decoder_input_embedded, self.decoder_sent_length,axis=1)  # it is a list,length is decoder_sent_length, each element is [batch_size,1,embed_size]
         decoder_input_squeezed = [tf.squeeze(x, axis=1) for x in decoder_input_splitted]  # it is a list,length is decoder_sent_length, each element is [batch_size,embed_size]
 
-        #rnn_decoder_with_attention(decoder_inputs, initial_state, cell, loop_function,attention_states,scope=None):
-            #input1:decoder_inputs:target, shift by one. for example.the target is:"X Y Z",then decoder_inputs should be:"START X Y Z" A list of 2D Tensors [batch_size x input_size].
-            #input2:initial_state: 2D Tensor with shape  [batch_size x cell.state_size].
-            #input3:attention_states:represent X. 3D Tensor [batch_size x attn_length x attn_size].
-            #output:?
-        decoder_output,_=rnn_decoder_with_attention_ptr_network(decoder_input_squeezed, initial_state, cell, loop_function, attention_states,self.decoder_input, scope='decoder_pointer') # A list.length:self.sequence_length.each element is:[batch_size x output_size]
-        #print("decoder_output:",decoder_output)
+        decoder_output,_=self.rnn_decoder_with_attention_ptr_network(decoder_input_squeezed, initial_state, cell, self.is_training, attention_states) # A list.length:self.sequence_length.each element is:[batch_size x output_size]
         decoder_output=tf.stack(decoder_output,axis=1) #decoder_output:[batch_size,decode_sequence_length,input_sequence_length]
         #decoder_output=tf.reshape(decoder_output,shape=(-1,self.sequence_length)) #decoder_output:[batch_size*decoder_sent_length,sequence_length]
 
@@ -91,7 +82,6 @@ class seq2seq_attention_model:
         #with tf.name_scope("output"):
         #    logits = tf.matmul(decoder_output, self.W_projection) + self.b_projection  # logits shape:[batch_size*decoder_sent_length,self.sequence_length]==tf.matmul([batch_size*decoder_sent_length,sequence_length],[sequence_length,self.sequence_length])
         #    logits=tf.reshape(logits,shape=(self.batch_size,self.decoder_sent_length,self.sequence_length)) #logits shape:[batch_size,decoder_sent_length,self.sequence_length]
-        ###################################################################################################################################
         logits=decoder_output
         return logits
 
@@ -216,7 +206,84 @@ class seq2seq_attention_model:
             self.W_fc=tf.get_variable("W_fc",shape=[self.hidden_size*2,self.hidden_size])
             self.a_fc=tf.get_variable("a_fc",shape=[self.hidden_size])
 
-# train started: learn to sort nature number. for example, give a list[3,5,2,5,6,1], it will output:[5,2,0,3,1,4],which represent the index of the number in the list,sort by ascending order
+    def rnn_decoder_with_attention_ptr_network(self,decoder_inputs, initial_state, cell, is_training, attention_states,scope='ptr_decoder'):  # 3D Tensor [batch_size x attn_length x attn_size]
+        """RNN decoder for the sequence-to-sequence model.
+        Args:
+            decoder_inputs: A list of 2D Tensors [batch_size x input_size].it is decoder input.
+            initial_state: 2D Tensor with shape [batch_size x cell.state_size].it is the encoded vector of input sentences, which represent 'thought vector'
+            cell: core_rnn_cell.RNNCell defining the cell function and size.
+            is_training:  If it is not training, decoder_input will be ignored, and will use generated token.
+            (loop_function,removed): If not None, this function will be applied to the i-th output
+                in order to generate the i+1-st input, and decoder_inputs will be ignored,
+                except for the first element ("GO" symbol). This can be used for decoding,
+                but also for training to emulate http://arxiv.org/abs/1506.03099.
+                Signature -- loop_function(prev, i) = next
+                    * prev is a 2D Tensor of shape [batch_size x output_size],
+                    * i is an integer, the step number (when advanced control is needed),
+                    * next is a 2D Tensor of shape [batch_size x input_size].
+            attention_states: 3D Tensor [batch_size x attn_length x attn_size].it is represent input X.
+            scope: VariableScope for the created subgraph; defaults to "rnn_decoder".
+        Returns:
+            A tuple of the form (outputs, state), where:
+            outputs: A list of the same length as decoder_inputs of 2D Tensors with
+                shape [batch_size x output_size] containing generated outputs.
+            state: The state of each cell at the final time-step.
+                It is a 2D Tensor of shape [batch_size x cell.state_size].
+                (Note that in some cases, like basic RNN cell or GRU cell, outputs and
+                states can be the same. They are different for LSTM cells though.)
+        """
+        with tf.variable_scope("rnn_decoder"):#scope or "rnn_decoder"
+            print("rnn_decoder_with_attention started...")
+            state = initial_state  # [batch_size x cell.state_size].
+            _, hidden_size = state.get_shape().as_list()  # 200
+            attention_states_original = attention_states  # it is represent input X.
+            batch_size, sequence_length, _ = attention_states.get_shape().as_list()
+            outputs = []
+            prev = None
+            for i, inp in enumerate(decoder_inputs):  #sentence_length个[batch_size x input_size]
+                if  not is_training and prev is not None:
+                    with tf.variable_scope("loop_function", reuse=True):
+                        # inp = loop_function(prev, i)
+                        prev_symbol = tf.argmax(prev, 1)  # [batch_size]
+                        prev_symbol = prev_symbol[0]  # only care about one when predict, since batch_size will be 1.
+                        inp = attention_states[:, prev_symbol, :]
+                if i > 0:
+                    tf.get_variable_scope().reuse_variables()
+                # 1. ATTENTION get logits of attention for each encoder input. attention_states:[batch_size x attn_length x attn_size]; query=state:[batch_size x cell.state_size]
+                query = state
+                W_a = tf.get_variable("W_a", shape=[hidden_size, hidden_size], initializer=tf.random_normal_initializer(stddev=0.1))
+                query = tf.matmul(query, W_a)  # [batch_size,hidden_size]
+                query = tf.expand_dims(query, axis=1)  # [batch_size, 1, hidden_size]
+                U_a = tf.get_variable("U_a", shape=[hidden_size, hidden_size],initializer=tf.random_normal_initializer(stddev=0.1))
+                U_aa = tf.get_variable("U_aa", shape=[hidden_size])
+                attention_states = tf.reshape(attention_states,shape=(-1, hidden_size))  # [batch_size*sentence_length,hidden_size]
+                attention_states = tf.matmul(attention_states, U_a)  # [batch_size*sentence_length,hidden_size]
+                attention_states = tf.reshape(attention_states, shape=(-1, sequence_length, hidden_size))  # TODO [batch_size,sentence_length,hidden_size]
+                # query_expanded:            [batch_size,1,             hidden_size]
+                # attention_states_reshaped: [batch_size,sentence_length,hidden_size]
+                # query:last state of x
+                # attention_states: represent x in 3D
+                attention_logits = tf.nn.tanh(query + attention_states + U_aa)  # [batch_size,sentence_length,hidden_size]. additive style
+
+                # 2.get possibility of attention
+                attention_logits = tf.reshape(attention_logits, shape=(-1, hidden_size))  # batch_size*sequence_length [batch_size*sentence_length,hidden_size]
+                V_a = tf.get_variable("V_a", shape=[hidden_size, 1],initializer=tf.random_normal_initializer(stddev=0.1))  # [hidden_size,1]
+                attention_logits = tf.matmul(attention_logits,V_a)  # 最终需要的是[batch_size*sentence_length,1]<-----[batch_size*sentence_length,hidden_size],[hidden_size,1]
+                attention_logits = tf.reshape(attention_logits, shape=(-1, sequence_length))  # attention_logits:[batch_size,sequence_length]
+                attention_logits_max = tf.reduce_max(attention_logits, axis=1, keep_dims=True)  # [batch_size x 1]
+                # possibility distribution for each encoder input.it means how much attention or focus for each encoder input
+                p_attention = tf.nn.softmax(attention_logits - attention_logits_max)  # [batch_size x sequence_length] #=[batch_size,sequence_length of input]
+                output, state = cell(inp, state)  # cell(inp, state,context_vector)
+                outputs.append(p_attention)
+                if not is_training:
+                    prev = p_attention  # [batch_size x sequence_length] #=[batch_size,sequence_length of input]
+        print("rnn_decoder_with_attention ended...outputs:")
+        return outputs, state
+
+# test started: learn to sort nature number. for example, give a list[3,5,2,5,6,1], it will output:[5,2,0,3,1,4],which represent the index of the number in the list,sort by ascending order
+
+#train()-->predict()
+
 def train():
     # below is a function test; if you use this for text classifiction, you need to tranform sentence to indices of vocabulary first. then feed data to the graph.
     #num_classes = 9+2 #additional two classes:one is for _GO, another is for _END
@@ -232,7 +299,7 @@ def train():
     dropout_keep_prob = 0.5  # 0.5 #num_sentences
     decoder_sent_length=6
     l2_lambda=0.0001
-    model = seq2seq_attention_model(learning_rate, batch_size, decay_steps, decay_rate, sequence_length,
+    model = pointerNet(learning_rate, batch_size, decay_steps, decay_rate, sequence_length,
                                     vocab_size, embed_size,hidden_size, is_training,decoder_sent_length=decoder_sent_length,l2_lambda=l2_lambda)
     ckpt_dir = 'checkpoint_pointer_net/dummy_test/'
     saver = tf.train.Saver()
@@ -260,14 +327,9 @@ def train():
                                                                 model.dropout_keep_prob: dropout_keep_prob})
             print(i,"loss:", loss, "acc:", acc, "label_list_original as input x:",label_list_original,";input_y_label:", input_y_label, "prediction:", predict)
 
-            if i % 300 == 0:
+            if i % 500 == 0:
                 save_path = ckpt_dir + "model.ckpt"
                 saver.save(sess, save_path, global_step=i * 500)
-
-def get_unique_labels():
-    x=[2,3,4,5,6]
-    random.shuffle(x)
-    return x
 
 def predict():
     print("predict started.")
@@ -283,7 +345,7 @@ def predict():
     dropout_keep_prob = 1.0
     decoder_sent_length = 6
     l2_lambda = 0.0001
-    model = seq2seq_attention_model(learning_rate, batch_size, decay_steps, decay_rate, sequence_length, vocab_size,
+    model = pointerNet(learning_rate, batch_size, decay_steps, decay_rate, sequence_length, vocab_size,
                                     embed_size, hidden_size, is_training, decoder_sent_length=decoder_sent_length,
                                     l2_lambda=l2_lambda)
     ckpt_dir = 'checkpoint_pointer_net/dummy_test/'
@@ -300,11 +362,16 @@ def predict():
             label_target = np.argsort(label_list)
             label_target = list(label_target)
             # label_list_reverse.reverse()
-            decoder_input = np.array([[0] + label_target], dtype=np.int32)  # [[0,2,3,4,5,6]]
+            decoder_input = np.array([[0]*decoder_sent_length], dtype=np.int32)  # [[0,2,3,4,5,6]].label_target
             input_y_label = np.array([label_target + [1]], dtype=np.int32)  # [[2,3,4,5,6,1]]
             predict, = sess.run(model.predictions,
                            feed_dict={model.input_x: input_x, model.decoder_input: decoder_input, model.dropout_keep_prob: dropout_keep_prob})
-            print(i,  "label_list_original as input x:", label_list_original,";input_y_label:", input_y_label, "prediction:", predict)
+            print(i,  "label_list_original as input x:", label_list_original,";input_y_label:", input_y_label, "prediction:", predict) #
+
+def get_unique_labels():
+    x = [2, 3, 4, 5, 6]
+    random.shuffle(x)
+    return x
 
 #1.train the model
 train()
