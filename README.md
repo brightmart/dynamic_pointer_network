@@ -1,6 +1,6 @@
 # pointer_network
 --------------------------------------------------------------------
-An implementation of Pointer Network using tensorflow. By using sequence to sequence model, we are able to generate a sequence of output from a sequence of input. But the problem of exisiting sequence to sequence model is that the output space is based on vocabulary size. This is a problem in some scenario, where output should only based from input. for example, when we when to sort nature number, the output should only come from number from input. Another example is that when do slot filling, we only care token from input, we do not want to predict token outside of input.
+An implementation of Pointer Network using tensorflow. By using sequence to sequence model, we are able to generate a sequence of output from a sequence of input. But the problem of exisiting sequence to sequence model is that the output space is based on vocabulary size. This is a problem in some scenario, where output should only based from input. for example, when we sort nature number, the output should only come from number from input. Another example is that when do slot filling, we only care token from input, we do not want to predict token outside of input.
 
 ![alt text](https://github.com/brightmart/pointer_network/blob/master/pointer_network.JPG)
 ![alt text](https://github.com/brightmart/pointer_network/blob/master/pointer_network2.JPG)
