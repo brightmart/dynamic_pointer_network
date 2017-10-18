@@ -1,6 +1,14 @@
-# pointer_network
+# dynamic pointer_network and pointer network
+--------------------------------------------------------------------
+Below contain dynamic pointer network and pointer network
+
+Desc of Pointer Network:
 --------------------------------------------------------------------
 An implementation of Pointer Network using tensorflow. By using sequence to sequence model, we are able to generate a sequence of output from a sequence of input. But the problem of exisiting sequence to sequence model is that the output space is based on vocabulary size. This is a problem in some scenario, where output should only based from input. for example, when we sort nature number, the output should only come from number from input. Another example is that when do slot filling, we only care token from input, we do not want to predict token outside of input.
+
+Desc of Dynamic pointer network:
+--------------------------------------------------------------------
+Pointer Network provide a pointer mechanism under sequence to sequence framework, to limit output space only from inputs. how can we retreive different information from inputs. for example, if inputs is:" i want to go to new york at 8pm by plane?". if we want to know the time, the answer should be 8pm; if we want to know transporation, it is plane. we invent dynamic pointer network for you to provide your query information, and thus able to retrieve information dynamicly.
 
 ![alt text](https://github.com/brightmart/pointer_network/blob/master/pointer_network.JPG)
 ![alt text](https://github.com/brightmart/pointer_network/blob/master/pointer_network2.JPG)
