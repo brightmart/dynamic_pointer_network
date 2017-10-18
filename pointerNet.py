@@ -291,13 +291,13 @@ def train():
     batch_size = 1
     decay_steps = 1000
     decay_rate = 0.9
-    sequence_length = 5
+    sequence_length = 8#5
     vocab_size = 300
     embed_size = 100 #100
     hidden_size = 100
     is_training = True
     dropout_keep_prob = 0.5  # 0.5 #num_sentences
-    decoder_sent_length=6
+    decoder_sent_length=9 #6
     l2_lambda=0.0001
     model = pointerNet(learning_rate, batch_size, decay_steps, decay_rate, sequence_length,
                                     vocab_size, embed_size,hidden_size, is_training,decoder_sent_length=decoder_sent_length,l2_lambda=l2_lambda)
@@ -337,17 +337,16 @@ def predict():
     batch_size = 1
     decay_steps = 1000
     decay_rate = 0.9
-    sequence_length = 5
+    sequence_length = 8 #5
     vocab_size = 300
     embed_size = 100
     hidden_size = 100
     is_training = False
     dropout_keep_prob = 1.0
-    decoder_sent_length = 6
+    decoder_sent_length = 9#6
     l2_lambda = 0.0001
     model = pointerNet(learning_rate, batch_size, decay_steps, decay_rate, sequence_length, vocab_size,
-                                    embed_size, hidden_size, is_training, decoder_sent_length=decoder_sent_length,
-                                    l2_lambda=l2_lambda)
+                                    embed_size, hidden_size, is_training, decoder_sent_length=decoder_sent_length,l2_lambda=l2_lambda)
     ckpt_dir = 'checkpoint_pointer_net/dummy_test/'
     saver = tf.train.Saver()
     with tf.Session() as sess:
@@ -358,22 +357,21 @@ def predict():
             label_list = get_unique_labels()  # 长度为5.
             input_x = np.array([label_list], dtype=np.int32)  # [2,3,4,5,6]
             label_list_original = copy.deepcopy(label_list)
-            # label_list_reverse = copy.deepcopy(label_list)
+
+            decoder_input = np.array([[0]*decoder_sent_length], dtype=np.int32)  # [[0,2,3,4,5,6]].label_target
+            predict, = sess.run(model.predictions,feed_dict={model.input_x: input_x, model.decoder_input: decoder_input, model.dropout_keep_prob: dropout_keep_prob})
+
             label_target = np.argsort(label_list)
             label_target = list(label_target)
-            # label_list_reverse.reverse()
-            decoder_input = np.array([[0]*decoder_sent_length], dtype=np.int32)  # [[0,2,3,4,5,6]].label_target
             input_y_label = np.array([label_target + [1]], dtype=np.int32)  # [[2,3,4,5,6,1]]
-            predict, = sess.run(model.predictions,
-                           feed_dict={model.input_x: input_x, model.decoder_input: decoder_input, model.dropout_keep_prob: dropout_keep_prob})
             print(i,  "label_list_original as input x:", label_list_original,";input_y_label:", input_y_label, "prediction:", predict) #
 
 def get_unique_labels():
-    x = [2, 3, 4, 5, 6]
+    x = [2, 3, 4, 5, 6,7,8,9] #x = [2, 3, 4, 5, 6]
     random.shuffle(x)
     return x
 
 #1.train the model
-train()
+#train()
 #2.make a prediction based on the learned model.
-#predict()
+predict()
