@@ -10,6 +10,7 @@ Desc of Dynamic pointer network:
 --------------------------------------------------------------------
 Pointer Network provide a pointer mechanism under sequence to sequence framework, to limit output space only from inputs. how can we retreive different information from inputs. for example, if inputs is:" i want to go to new york at 8pm by plane?". if we want to know the time, the answer should be 8pm; if we want to know transporation, it is plane. we invent dynamic pointer network for you to provide your query information, and thus able to retrieve information dynamicly.
 
+For formal description,mechansim and tasks perfomranced, please check <a href='https://github.com/brightmart/dynamic_pointer_network/blob/master/dynamic_pointer_network.pdf'>Dynamic Pointer Network</>
 check: dynamic_pointer_net.py for more informatin
 
 ![alt text](https://github.com/brightmart/pointer_network/blob/master/pointer_network.JPG)
