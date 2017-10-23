@@ -12,7 +12,7 @@ Pointer Network provide a pointer mechanism under sequence to sequence framework
 
 For formal description,mechansim and tasks perfomranced, please check <a href='https://github.com/brightmart/dynamic_pointer_network/blob/master/dynamic_pointer_network.pdf'>Dynamic Pointer Network</a>
 
-![alt text](https://github.com/brightmart/dynamic_pointer_network/blob/master/DPN.JPG)
+![alt text](https://github.com/brightmart/dynamic_pointer_network/blob/master/DPN_.JPG)
 
 check: dynamic_pointer_net.py for more informatin
 
