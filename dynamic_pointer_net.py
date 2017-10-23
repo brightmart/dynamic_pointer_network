@@ -20,6 +20,8 @@ class dynamic_pointer_net:
         self.is_training = is_training
         self.learning_rate = tf.Variable(learning_rate, trainable=False, name="learning_rate")
         self.learning_rate_decay_half_op = tf.assign(self.learning_rate, self.learning_rate * 0.5)
+        self.learning_rate_decay_five_times_op = tf.assign(self.learning_rate, self.learning_rate * 0.1)
+
         self.initializer = initializer
         self.decoder_sent_length=decoder_sent_length
         self.hidden_size = hidden_size
@@ -310,10 +312,107 @@ end_token_index=7
 
 sequence_length=20
 
+#batch training with mix of tasks
+def train_batch2():
+    # below is a function test; if you use this for text classifiction, you need to tranform sentence to indices of vocabulary first. then feed data to the graph.
+    #num_classes = 9+2 #additional two classes:one is for _GO, another is for _END
+    learning_rate =0.0001 # 0.001
+    batch_size = 66 #64
+    decay_steps = 1000
+    decay_rate = 0.98
+    vocab_size = 300
+    embed_size = 100 #100
+    hidden_size = 100
+    is_training = True
+    dropout_keep_prob =0.0 # 0.5  # 0.5 #num_sentences
+    decoder_sent_length=sequence_length+1 #6
+    l2_lambda=0.0001
+    model = dynamic_pointer_net(learning_rate, batch_size, decay_steps, decay_rate, sequence_length,
+                                    vocab_size, embed_size,hidden_size, is_training,decoder_sent_length=decoder_sent_length,l2_lambda=l2_lambda)
+    ckpt_dir = 'checkpoint_dynamic_pointer_net/dummy_test/'
+    saver = tf.train.Saver()
+    with tf.Session() as sess:
+        if os.path.exists(ckpt_dir + "checkpoint"):
+            print("Restoring Variables from Checkpoint")
+            saver.restore(sess, tf.train.latest_checkpoint(ckpt_dir))
+        else:
+            print('Initializing Variables')
+            sess.run(tf.global_variables_initializer())
+
+        for i in range(10000):
+            if i%1000==0 and i==0:
+                lr=sess.run([model.learning_rate_decay_five_times_op])
+            batch_size_=int(batch_size/3)
+            input_x, decoder_input, input_y_label,decoder_input_reverse,input_y_label_reverse,decoder_input_max,input_y_label_max=get_unique_labels_batch(batch_size_,sequence_length=sequence_length) #o.k. a 2-D list
+            #if i%3==0:
+            sorting1=[[101]*decoder_sent_length]*batch_size_ #sorting as ascending order(升序)
+            #elif i%3==1:
+            sorting2 =[[102]*decoder_sent_length]*batch_size_  # sorting as ascending order（降序）
+                #decoder_input=decoder_input_reverse
+                #input_y_label=input_y_label_reverse
+            #elif i%3==2:
+            sorting3 = [[103] * decoder_sent_length] * batch_size_  # get max value
+                #decoder_input=decoder_input_max
+                #input_y_label=input_y_label_max
+            #print("input_x.original", input_x)
+            input_x_= np.array(input_x+input_x+input_x)
+            sorting=sorting1+sorting2+sorting3
+            query_=np.array(sorting,dtype=np.int32)
+            decoder_input_=np.array(decoder_input +decoder_input_reverse +decoder_input_max)
+            input_y_label_=np.array(input_y_label+input_y_label_reverse+input_y_label_max)
+
+            #print("input_x.total:",input_x)
+           # print("input_x:",input_x.shape())
+            #print(";query:",query.shape())
+           # print(";decoder_input:",decoder_input.shape())
+           # print(";input_y_label:",input_y_label.shape())
+
+            loss, acc, predict, W_projection_value, learning_rate,_ = sess.run([model.loss_val, model.accuracy, model.predictions, model.W_projection, model.learning_rate,model.train_op],
+                                                     feed_dict={model.input_x:input_x_,model.query:query_,model.decoder_input:decoder_input_, model.input_y_label: input_y_label_,
+                                                                model.dropout_keep_prob: dropout_keep_prob})
+            if i%10==0:
+                print(i,"loss:", loss, ";acc:", acc,";learning_rate:",learning_rate);#print( "label_list_original as input x:",label_list_original,";input_y_label:", input_y_label, "prediction:", predict)
+
+            if i % 500 == 0:
+                save_path = ckpt_dir + "model.ckpt"
+                saver.save(sess, save_path, global_step=i)
+
+def get_unique_labels_batch(batch_size,sequence_length=8):
+    #print("get_unique_labels_batch.sequence_length:",sequence_length)
+    x=[]
+    decoder_input=[]
+    input_y_label=[]
+    decoder_input_reverse=[]
+    input_y_label_reverse=[]
+    decoder_input_max=[]
+    input_y_label_max=[]
+    for i in range(batch_size):
+        labels=get_unique_labels(sequence_length=sequence_length)
+        #print("labels:",labels)
+        x.append(labels)
+
+        sequence_target_index=list(np.argsort(labels))
+        decoder_input.append([start_token_index]+sequence_target_index)
+        input_y_label.append(sequence_target_index+[end_token_index])
+
+        sequence_target_index.reverse()
+        decoder_input_reverse.append([start_token_index]+sequence_target_index)
+        input_y_label_reverse.append(sequence_target_index + [end_token_index])
+
+        max_value_list=[i for i in range(len(labels))] #TODO #[1]*len(labels)
+        max_value_index=np.argmax(labels)
+        max_value_list[max_value_index]=0
+        #print("max.labels:",labels,";max_value_list:",max_value_list)
+        decoder_input_max.append([start_token_index]+max_value_list)
+        input_y_label_max.append(max_value_list+[end_token_index])
+        #print([start_token_index]+max_value_list,"--->",max_value_list+[end_token_index])
+    return x,decoder_input,input_y_label,decoder_input_reverse,input_y_label_reverse,decoder_input_max,input_y_label_max
+
+#batch training with task train in alternate way
 def train_batch():
     # below is a function test; if you use this for text classifiction, you need to tranform sentence to indices of vocabulary first. then feed data to the graph.
     #num_classes = 9+2 #additional two classes:one is for _GO, another is for _END
-    learning_rate = 0.001
+    learning_rate =0.0001 # 0.001
     batch_size = 64
     decay_steps = 1000
     decay_rate = 0.98
@@ -336,7 +435,7 @@ def train_batch():
             print('Initializing Variables')
             sess.run(tf.global_variables_initializer())
 
-        for i in range(1500):
+        for i in range(15000):
             input_x, decoder_input, input_y_label,decoder_input_reverse,input_y_label_reverse,decoder_input_max,input_y_label_max=get_unique_labels_batch(batch_size,sequence_length=sequence_length) #o.k. a 2-D list
             if i%3==0:
                 sorting=[[101]*decoder_sent_length]*batch_size #sorting as ascending order(升序)
@@ -382,7 +481,7 @@ def predict():
         print("going to restore checkpoint.")
         saver.restore(sess, tf.train.latest_checkpoint(ckpt_dir))
         for i in range(100):
-            label_list=[7, 14, 11, 19, 18, 8, 12, 9, 13, 3, 5, 1, 6, 17, 16, 15, 20, 4, 10, 2] #get_unique_labels(sequence_length=sequence_length) # length is 5.
+            label_list=[7,14,11,19,18,8,12,9,13,3,5, 1,6,17,16,15,20,4,10,2] #get_unique_labels(sequence_length=sequence_length) # length is 5.
             input_x = np.array([label_list],dtype=np.int32) #[2,3,4,5,6]
             if i%3==0:
                 sorting=[101]*decoder_sent_length   #sorting as ascending order(升序)
@@ -412,38 +511,6 @@ def predict():
             print(i,  "label_list_original as input x:", label_list_original,";input_y_label:", input_y_label, "prediction:", predict) #
 
 
-
-def get_unique_labels_batch(batch_size,sequence_length=8):
-    #print("get_unique_labels_batch.sequence_length:",sequence_length)
-    x=[]
-    decoder_input=[]
-    input_y_label=[]
-    decoder_input_reverse=[]
-    input_y_label_reverse=[]
-    decoder_input_max=[]
-    input_y_label_max=[]
-    for i in range(batch_size):
-        labels=get_unique_labels(sequence_length=sequence_length)
-        #print("labels:",labels)
-        x.append(labels)
-
-        sequence_target_index=list(np.argsort(labels))
-        decoder_input.append([start_token_index]+sequence_target_index)
-        input_y_label.append(sequence_target_index+[end_token_index])
-
-        sequence_target_index.reverse()
-        decoder_input_reverse.append([start_token_index]+sequence_target_index)
-        input_y_label_reverse.append(sequence_target_index + [end_token_index])
-
-        max_value_list=[i for i in range(len(labels))] #TODO #[1]*len(labels)
-        max_value_index=np.argmax(labels)
-        max_value_list[max_value_index]=0
-        #print("max.labels:",labels,";max_value_list:",max_value_list)
-        decoder_input_max.append([start_token_index]+max_value_list)
-        input_y_label_max.append(max_value_list+[end_token_index])
-        #print([start_token_index]+max_value_list,"--->",max_value_list+[end_token_index])
-    return np.array(x),np.array(decoder_input),np.array(input_y_label),np.array(decoder_input_reverse),np.array(input_y_label_reverse),np.array(decoder_input_max),np.array(input_y_label_max)
-
 def get_unique_labels(sequence_length=8):
     #print("get_unique_labels.sequence_length:",sequence_length)
     x=[x+1 for x in range(sequence_length)]
@@ -452,6 +519,6 @@ def get_unique_labels(sequence_length=8):
     return x
 
 #1.train the model
-#train_batch()
+#train_batch2()
 #2.make a prediction based on the learned model.
 predict()
