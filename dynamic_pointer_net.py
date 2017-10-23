@@ -305,6 +305,11 @@ class dynamic_pointer_net:
 
 #train()-->predict()
 
+start_token_index = 99
+end_token_index=7
+
+sequence_length=20
+
 def train_batch():
     # below is a function test; if you use this for text classifiction, you need to tranform sentence to indices of vocabulary first. then feed data to the graph.
     #num_classes = 9+2 #additional two classes:one is for _GO, another is for _END
@@ -312,7 +317,6 @@ def train_batch():
     batch_size = 64
     decay_steps = 1000
     decay_rate = 0.98
-    sequence_length = 20#5
     vocab_size = 300
     embed_size = 100 #100
     hidden_size = 100
@@ -332,7 +336,7 @@ def train_batch():
             print('Initializing Variables')
             sess.run(tf.global_variables_initializer())
 
-        for i in range(1000000):
+        for i in range(1500):
             input_x, decoder_input, input_y_label,decoder_input_reverse,input_y_label_reverse,decoder_input_max,input_y_label_max=get_unique_labels_batch(batch_size,sequence_length=sequence_length) #o.k. a 2-D list
             if i%3==0:
                 sorting=[[101]*decoder_sent_length]*batch_size #sorting as ascending order(升序)
@@ -351,9 +355,9 @@ def train_batch():
                                                                 model.dropout_keep_prob: dropout_keep_prob})
             print(i,"loss:", loss, "acc:", acc);#print( "label_list_original as input x:",label_list_original,";input_y_label:", input_y_label, "prediction:", predict)
 
-            if i % 1000 == 0:
+            if i % 500 == 0:
                 save_path = ckpt_dir + "model.ckpt"
-                saver.save(sess, save_path, global_step=i * 1000)
+                saver.save(sess, save_path, global_step=i * 500)
 
 def predict():
     print("predict started.")
@@ -361,15 +365,14 @@ def predict():
     batch_size = 1
     decay_steps = 1000
     decay_rate = 0.9
-    sequence_length = 8#5
     vocab_size = 300
     embed_size = 100 #100
     hidden_size = 100
     is_training = True
     dropout_keep_prob = 0.5  # 0.5 #num_sentences
-    decoder_sent_length=9 #6
+    decoder_sent_length=sequence_length+1
     l2_lambda=0.0001
-    start_token_index = 100
+    #start_token_index = 100
     model = dynamic_pointer_net(learning_rate, batch_size, decay_steps, decay_rate, sequence_length, vocab_size,
                                     embed_size, hidden_size, is_training, decoder_sent_length=decoder_sent_length,l2_lambda=l2_lambda)
     ckpt_dir = 'checkpoint_dynamic_pointer_net/dummy_test/'
@@ -379,7 +382,7 @@ def predict():
         print("going to restore checkpoint.")
         saver.restore(sess, tf.train.latest_checkpoint(ckpt_dir))
         for i in range(100):
-            label_list=get_unique_labels() # length is 5.
+            label_list=[7, 14, 11, 19, 18, 8, 12, 9, 13, 3, 5, 1, 6, 17, 16, 15, 20, 4, 10, 2] #get_unique_labels(sequence_length=sequence_length) # length is 5.
             input_x = np.array([label_list],dtype=np.int32) #[2,3,4,5,6]
             if i%3==0:
                 sorting=[101]*decoder_sent_length   #sorting as ascending order(升序)
@@ -408,10 +411,10 @@ def predict():
             input_y_label = np.array([label_target ], dtype=np.int32)  # [[2,3,4,5,6,1]]
             print(i,  "label_list_original as input x:", label_list_original,";input_y_label:", input_y_label, "prediction:", predict) #
 
-start_token_index = 99
-end_token_index=7
+
 
 def get_unique_labels_batch(batch_size,sequence_length=8):
+    #print("get_unique_labels_batch.sequence_length:",sequence_length)
     x=[]
     decoder_input=[]
     input_y_label=[]
@@ -421,6 +424,7 @@ def get_unique_labels_batch(batch_size,sequence_length=8):
     input_y_label_max=[]
     for i in range(batch_size):
         labels=get_unique_labels(sequence_length=sequence_length)
+        #print("labels:",labels)
         x.append(labels)
 
         sequence_target_index=list(np.argsort(labels))
@@ -441,12 +445,13 @@ def get_unique_labels_batch(batch_size,sequence_length=8):
     return np.array(x),np.array(decoder_input),np.array(input_y_label),np.array(decoder_input_reverse),np.array(input_y_label_reverse),np.array(decoder_input_max),np.array(input_y_label_max)
 
 def get_unique_labels(sequence_length=8):
+    #print("get_unique_labels.sequence_length:",sequence_length)
     x=[x+1 for x in range(sequence_length)]
     #x = [2, 3, 4, 5, 6,7,8,9] #x = [2, 3, 4, 5, 6]
     random.shuffle(x)
     return x
 
 #1.train the model
-train_batch()
+#train_batch()
 #2.make a prediction based on the learned model.
-#predict()
+predict()
